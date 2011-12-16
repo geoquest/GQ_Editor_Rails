@@ -21,7 +21,7 @@ ActiveRecord::Schema.define(:version => 20110801120330) do
     t.integer  "max_mission_id", :default => 0
     t.integer  "max_hotspot_id", :default => 0
     t.integer  "max_event_id",   :default => 0
-    t.datetime "last_modified",  :default => '2011-10-06 10:07:33'
+    t.datetime "last_modified",  :default => '2011-10-10 15:03:03'
   end
 
   create_table "sessions", :force => true do |t|
