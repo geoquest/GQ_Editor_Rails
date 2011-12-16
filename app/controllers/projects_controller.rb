@@ -5,9 +5,11 @@
 require 'exist_adapter'
 require 'zip/zip'
 require 'fileutils'
+require 'rest_client'
 
 class ProjectsController < ApplicationController
   before_filter :authenticate
+
   def index
     @projects = Project.find_all_by_user_id(@current_user.id)
     max_last_modified = Project.maximum(:last_modified, :conditions => {:user_id => @current_user.id})
@@ -40,7 +42,7 @@ class ProjectsController < ApplicationController
     end
 
     path_tmp = Rails.root.join("data", "repository", @current_user.id.to_s, "tmp_" + @project.id.to_s + ".zip")
-    path_final = Rails.root.join("data", "repository", @current_user.id.to_s,  @project.id.to_s + ".zip")
+    path_final = Rails.root.join("data", "repository", @current_user.id.to_s, @project.id.to_s + ".zip")
     path_repo = Rails.root.join("data", "repository", @current_user.id.to_s)
     path_public = Rails.root.join("public", "projects", @project.id.to_s)
 
@@ -50,36 +52,59 @@ class ProjectsController < ApplicationController
     FileUtils.rm_rf("sound") if Dir.exists?("sound")
     FileUtils.rm_rf("html") if Dir.exists?("html")
     FileUtils.rm_f(path_final) if File.exists?(path_final)
-    
-    Zip::ZipFile.open(path_tmp, Zip::ZipFile::CREATE) {|zipfile|
 
-        zipfile.get_output_stream("game.xml") { |f| f.write(xmlfile) }
+    Zip::ZipFile.open(path_tmp, Zip::ZipFile::CREATE) { |zipfile|
 
-        # Add drawable and sound (All contents of the "public" folder)
+      zipfile.get_output_stream("game.xml") { |f| f.write(xmlfile) }
 
-        stack= [""]
+      # Add drawable and sound (All contents of the "public" folder)
 
-        while stack.size() > 0 do
-          dir = stack.pop()
-          dir = dir + "/" unless dir == ""
+      stack= [""]
 
-          Dir.chdir(path_public.to_s + "/" + dir)
-          Dir.glob("*") {|x|
-            name = dir + File.basename(x).to_s;
-            if File.directory?(x) then
-              zipfile.mkdir(name)
-              stack.push(name)
-            else
-              zipfile.add(name, path_public.to_s + "/" + name)
+      while stack.size() > 0 do
+        dir = stack.pop()
+        dir = dir + "/" unless dir == ""
 
-            end
-          }
-        end
+        Dir.chdir(path_public.to_s + "/" + dir)
+        Dir.glob("*") { |x|
+          name = dir + File.basename(x).to_s;
+          if File.directory?(x) then
+            zipfile.mkdir(name)
+            stack.push(name)
+          else
+            zipfile.add(name, path_public.to_s + "/" + name)
 
-     }
+          end
+        }
+      end
+
+    }
 
     # Move tmp_ file to final file
     FileUtils.mv(path_tmp.to_s, path_final.to_s)
+
+    deploy_to_gq_server(path_final.to_s)
+    # Rails.logger.info("move from tmp: #{path_tmp.to_s} to: #{path_final.to_s}")
+
+  end
+
+  def deploy_to_gq_server(path_to_zip_file)
+    Rails.logger.info("deploying on gq server: #{path_to_zip_file}")
+    # `mail -s "from ruby" muegge@cs.uni-bonn.de
+    RestClient.post('http://geoquest.qeevee.org/upload/upload.php',
+                    :uploaded_file => File.new(path_to_zip_file),
+                    :secret => "fromEditor") { |response, request, result, &block|
+      case response.code
+        when 200
+          Rails.logger.info("It worked ! The result is: \n#{response}")
+        when 423
+          Rails.logger.info("Sadly, it did not work !")
+        else
+          Rails.logger.info("Strange! The result code is: >#{response.code}<")
+      end
+    }
+
+    Rails.logger.info("deployed.")
   end
 
   def create_repository_entry
@@ -93,7 +118,7 @@ class ProjectsController < ApplicationController
 
     # Compute average hotspot position 
     if hotspots.size > 0
-      hotspots.each do | hotspot|
+      hotspots.each do |hotspot|
         lat += Float(hotspot.attribute("latitude").to_s)
         long += Float(hotspot.attribute("longitude").to_s)
       end
@@ -122,12 +147,12 @@ class ProjectsController < ApplicationController
          </game>
       let $repository := doc("repository.xml")/repositories/repository[@name="<%= @current_user.name %>"]
       return update insert $newGame into $repository
-  EOF
+    EOF
 
 
-  command = template.result(binding)
-  adapter = ExistAdapter.new("global")
-  result = adapter.do_request(command)
+    command = template.result(binding)
+    adapter = ExistAdapter.new("global")
+    result = adapter.do_request(command)
 
   end
 
@@ -135,7 +160,7 @@ class ProjectsController < ApplicationController
     template = ERB.new <<-EOF
     let $game := doc("repository.xml")//game[@file="<%= params[:project_id] %>"]
     return update delete $game
-EOF
+    EOF
 
     command = template.result(binding)
     adapter = ExistAdapter.new("global")
@@ -164,37 +189,37 @@ EOF
   end
 
   def create_project_directory
-      projekt_path = Rails.root.join("public", "projects", @project.id.to_s).to_s
-      Dir.mkdir(projekt_path)
-      Dir.mkdir(projekt_path + "/drawable")
-      Dir.mkdir(projekt_path + "/drawable/npcs")
-      Dir.mkdir(projekt_path + "/drawable/hotspots")
-      Dir.mkdir(projekt_path + "/html")
-      Dir.mkdir(projekt_path + "/sound")
+    projekt_path = Rails.root.join("public", "projects", @project.id.to_s).to_s
+    FileUtils.mkdir_p(projekt_path)
+    Dir.mkdir(projekt_path + "/drawable")
+    Dir.mkdir(projekt_path + "/drawable/npcs")
+    Dir.mkdir(projekt_path + "/drawable/hotspots")
+    Dir.mkdir(projekt_path + "/html")
+    Dir.mkdir(projekt_path + "/sound")
   end
 
   def upload_skeleton_game_xml(adapter)
-      game_skeleton_path = Rails.root.join("data", "skeleton.xml");
-      adapter.upload_file_as_filename(game_skeleton_path, "game.xml")
+    game_skeleton_path = Rails.root.join("data", "skeleton.xml");
+    adapter.upload_file_as_filename(game_skeleton_path, "game.xml")
   end
 
   def create_temporary_file(params)
-   name = Time.now.nsec.to_s + "_game.zip"
-   UploadedFile.save(name, Dir.tmpdir,  params[:existing_project_file])
-   return Dir.tmpdir + "/" + name
+    name = Time.now.nsec.to_s + "_game.zip"
+    UploadedFile.save(name, Dir.tmpdir, params[:existing_project_file])
+    return Dir.tmpdir + "/" + name
   end
 
   def extract_archive(file_name)
-      dest_path = Rails.root.join("public", "projects", @project.id.to_s).to_s
+    dest_path = Rails.root.join("public", "projects", @project.id.to_s).to_s
 
-      Zip::ZipFile.open(file_name) do |zipfile|
-        zipfile.each do |entry|
-          next if entry.name == "game.xml" # Do not extract game.xml
-          file_path = File.join(dest_path, entry.name)
-          FileUtils.mkdir_p(File.dirname(file_path))
-          zipfile.extract(entry, file_path)
-        end
+    Zip::ZipFile.open(file_name) do |zipfile|
+      zipfile.each do |entry|
+        next if entry.name == "game.xml" # Do not extract game.xml
+        file_path = File.join(dest_path, entry.name)
+        FileUtils.mkdir_p(File.dirname(file_path))
+        zipfile.extract(entry, file_path)
       end
+    end
   end
 
   def upload_game_xml(adapter, file_name)
@@ -218,7 +243,7 @@ EOF
       unless params.has_key?(:existing_project_file)
         create_project_directory
         upload_skeleton_game_xml(adapter)
-      # From existing project
+        # From existing project
       else
         Rails.logger.info("Create from existing file")
         file_name = create_temporary_file(params)
