@@ -35,8 +35,8 @@ end
 task :stop do
   run "#{deploy_to}/current/script/stop.sh"
 end
-#   task :restart, :roles => :app, :except => { :no_release => true } do
-#     run "touch #{File.join(current_path,'tmp','restart.txt')}"
-#   end
+task :restart, :roles => :app, :except => { :no_release => true } do
+  run "touch #{File.join(current_path,'tmp','restart.txt')}"
+end
 #end
 
