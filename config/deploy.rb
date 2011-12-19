@@ -30,6 +30,7 @@ role :db,  "geoquest.qeevee.org", :primary => true # This is where Rails migrati
 #    run "cd #{deploy_to}/current && bundle install vendor/gems"
 #  end
 task :start do
+  run "echo \"Starting ...\""
   run "#{deploy_to}/current/script/start.sh"
 end
 task :stop do
