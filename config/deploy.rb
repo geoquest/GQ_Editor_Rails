@@ -1,7 +1,7 @@
 # require "bundler/capistrano"
 
 set :application, "GeoQuest-Editor"
-set :repository,  "git://github.com/geoquest/GeoQuest-Editor.git"
+set :repository, "git://github.com/geoquest/GeoQuest-Editor.git"
 
 set :scm, :git
 # Or: `accurev`, `bzr`, `cvs`, `darcs`, `git`, `mercurial`, `perforce`, `subversion` or `none`
@@ -16,9 +16,9 @@ set :ssh_options, {:forward_agent => true}
 set :use_sudo, false
 # since sudo-ing might confuse access rights
 
-role :web, "geoquest.qeevee.org"                          # Your HTTP server, Apache/etc
-role :app, "geoquest.qeevee.org"                          # This may be the same as your `Web` server
-role :db,  "geoquest.qeevee.org", :primary => true # This is where Rails migrations will run
+role :web, "geoquest.qeevee.org" # Your HTTP server, Apache/etc
+role :app, "geoquest.qeevee.org" # This may be the same as your `Web` server
+role :db, "geoquest.qeevee.org", :primary => true # This is where Rails migrations will run
 # role :db,  "your slave db-server here"
 
 #after "deploy", "deploy:bundle_gems"
@@ -29,15 +29,18 @@ role :db,  "geoquest.qeevee.org", :primary => true # This is where Rails migrati
 #  task :bundle_gems do
 #    run "cd #{deploy_to}/current && bundle install vendor/gems"
 #  end
-task :startit do
-  run "echo \"Starting ...\""
-  run "#{deploy_to}/current/script/start.sh"
+namespace :deploy do
+  desc "starting"
+  task :start do
+    run "#{deploy_to}/current/script/start.sh"
+  end
+
+  desc "stopping"
+  task :stop do
+    run "#{deploy_to}/current/script/stop.sh"
+  end
+  task :restart, :roles => :app, :except => {:no_release => true} do
+    run "touch #{File.join(current_path, 'tmp', 'restart.txt')}"
+  end
 end
-task :stopit do
-  run "#{deploy_to}/current/script/stop.sh"
-end
-task :restart, :roles => :app, :except => { :no_release => true } do
-  run "touch #{File.join(current_path,'tmp','restart.txt')}"
-end
-#end
 
